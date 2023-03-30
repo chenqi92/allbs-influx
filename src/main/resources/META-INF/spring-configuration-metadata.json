@@ -1,0 +1,34 @@
+{
+  "properties": [
+    {
+      "name": "influx.open_url",
+      "description": "时序库连接地址",
+      "defaultValue": ""
+    },
+    {
+      "name": "influx.username",
+      "description": "时序库用户名",
+      "defaultValue": ""
+    },
+    {
+      "name": "influx.password",
+      "description": "时序库密码",
+      "defaultValue": ""
+    },
+    {
+      "name": "influx.database",
+      "description": "时序库连接的库名",
+      "defaultValue": "aq_test"
+    },
+    {
+      "name": "influx.retention_policy",
+      "description": "时序库数据保存策略",
+      "defaultValue": "autogen"
+    },
+    {
+      "name": "influx.retention_policy_time",
+      "description": "数据保存时间暂不启用",
+      "defaultValue": ""
+    }
+  ]
+}
