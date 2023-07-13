@@ -6,7 +6,7 @@
 <dependency>
   <groupId>cn.allbs</groupId>
   <artifactId>allbs-influx</artifactId>
-  <version>2.0.1</version>
+  <version>2.0.2</version>
 </dependency>
 ```
 
@@ -15,7 +15,7 @@
 <!-- tab Gradle -->
 
 ```
-implementation 'cn.allbs:allbs-influx:2.0.1'
+implementation 'cn.allbs:allbs-influx:2.0.2'
 ```
 
 <!-- endtab -->
@@ -23,7 +23,7 @@ implementation 'cn.allbs:allbs-influx:2.0.1'
 <!-- tab Kotlin -->
 
 ```
-implementation("cn.allbs:allbs-influx:2.0.1")
+implementation("cn.allbs:allbs-influx:2.0.2")
 ```
 <!-- endtab -->
 {% endtabs %}
@@ -35,11 +35,14 @@ influx:
   open_url: http://192.168.1.111:8086
   username: ${INFLUX-USER:root}
   password: ${INFLUX-PWD:123456}
+  # 表名
   database: allbstest
   # influxdb储存策略
   retention_policy: autogen
   # 储存永久
   retention_policy_time: 0s
+  # 项目启动时如果无法连接influxdb库是否允许项目继续启动，设置为true为可以启动，默认为false如果无法连接则项目无法启动
+  skip-error: true
 ```
 
 ### 启用
@@ -49,7 +52,10 @@ influx:
 ### 在需要使用influxdb的类中注入template
 
 ```java
-private final InfluxTemplate influxTemplate;
+import javax.annotation.Resource;
+
+@Resource
+private InfluxTemplate influxTemplate;
 ```
 
 ### 业务使用
