@@ -1,7 +1,9 @@
 package cn.allbs.influx;
 
+import cn.allbs.influx.client.DefaultInfluxTemplate;
+import cn.allbs.influx.client.NullInfluxTemplate;
+import cn.allbs.influx.exception.InfluxdbException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.AllArgsConstructor;
 import org.influxdb.BatchOptions;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -18,18 +20,29 @@ import org.springframework.context.annotation.Configuration;
  */
 @Configuration
 @EnableConfigurationProperties({InfluxDbProperties.class})
-@AllArgsConstructor
 public class InfluxDbConfiguration {
 
     private final InfluxDbProperties influxDbProperties;
 
+    public InfluxDbConfiguration(InfluxDbProperties influxDbProperties) {
+        this.influxDbProperties = influxDbProperties;
+    }
+
     @Bean
-    @ConditionalOnClass(ObjectMapper.class)
+    @ConditionalOnClass({ObjectMapper.class})
     @ConditionalOnMissingBean(InfluxTemplate.class)
     public InfluxTemplate influxTemplate() {
         BatchOptions batchOptions = BatchOptions.DEFAULTS;
-        InfluxTemplate influxTemplate = new InfluxTemplate(influxDbProperties, batchOptions);
-        influxTemplate.createRetentionPolicy();
-        return influxTemplate;
+        try {
+            InfluxTemplate influxDbClient = new DefaultInfluxTemplate(influxDbProperties, batchOptions);
+            influxDbClient.createRetentionPolicy();
+            return influxDbClient;
+        } catch (Exception e) {
+            if (this.influxDbProperties.isSkipError()) {
+                return new NullInfluxTemplate(influxDbProperties, batchOptions);
+            } else {
+                throw new InfluxdbException("Failed to create InfluxDbClient bean", e);
+            }
+        }
     }
 }

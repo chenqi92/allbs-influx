@@ -18,4 +18,5 @@ import java.lang.annotation.*;
 @Inherited
 @Import({InfluxDbConfiguration.class})
 public @interface EnableAllbsInflux {
+
 }
