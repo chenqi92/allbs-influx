@@ -9,7 +9,7 @@
     <name>${project.artifactId}</name>
     <packaging>jar</packaging>
     <description>influxdb操作工具</description>
-    <version>2.0.2</version>
+    <version>2.1.0</version>
     <url>www.allbs.cn</url>
 
     <properties>
@@ -18,11 +18,11 @@
         <maven.compiler.target>8</maven.compiler.target>
         <project.build.sourceEncoding>utf-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>utf-8</project.reporting.outputEncoding>
-        <influxdb.version>2.23</influxdb.version>
-        <jackson.version>2.15.2</jackson.version>
-        <spring-boot.version>2.7.9</spring-boot.version>
+        <influxdb.version>2.24</influxdb.version>
+        <jackson.version>2.17.1</jackson.version>
+        <spring-boot.version>3.3.1</spring-boot.version>
         <spring.checkstyle.plugin>0.0.29</spring.checkstyle.plugin>
-        <sl4j.version>2.0.6</sl4j.version>
+        <sl4j.version>2.0.13</sl4j.version>
     </properties>
 
     <dependencies>
@@ -64,7 +64,7 @@
     </scm>
     <developers>
         <developer>
-            <name>chenQi</name>
+            <name>ChenQi</name>
             <email>chenqi92104@icloud.com</email>
             <organization>allbs</organization>
         </developer>

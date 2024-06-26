@@ -7,6 +7,7 @@ import org.influxdb.BatchOptions;
 import org.influxdb.InfluxDB;
 import org.influxdb.dto.*;
 import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.annotation.Resource;
 import java.time.LocalDateTime;
@@ -17,15 +18,18 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
- * 功能:
+ * 抽象InfluxDB客户端
+ * 提供InfluxDB的基本操作
+ * <p>
  *
  * @author ChenQi
  * @version 1.0
- * @since 2021/3/5 9:20
+ * @since 2021/3/5
  */
 public abstract class InfluxDbClient implements InfluxTemplate {
 
-    private static final Logger log = org.slf4j.LoggerFactory.getLogger(InfluxDbClient.class);
+    private static final Logger log = LoggerFactory.getLogger(InfluxDbClient.class);
+
     protected String database;
     protected String retentionPolicy;
     protected String retentionPolicyTime;
@@ -40,10 +44,8 @@ public abstract class InfluxDbClient implements InfluxTemplate {
     public InfluxDbClient(InfluxDbProperties influxDbProperties, BatchOptions batchOptions) {
         this.batchOptions = batchOptions == null ? BatchOptions.DEFAULTS : batchOptions;
         this.database = influxDbProperties.getDatabase();
-        retentionPolicy = influxDbProperties.getRetentionPolicy();
-        retentionPolicyTime = influxDbProperties.getRetentionPolicyTime();
-        influxDbProperties.setRetentionPolicy(Optional.of(influxDbProperties).map(InfluxDbProperties::getRetentionPolicy).orElse("autogen"));
-        influxDbProperties.setRetentionPolicyTime(Optional.of(influxDbProperties).map(InfluxDbProperties::getRetentionPolicyTime).orElse("0"));
+        this.retentionPolicy = Optional.ofNullable(influxDbProperties.getRetentionPolicy()).orElse("autogen");
+        this.retentionPolicyTime = Optional.ofNullable(influxDbProperties.getRetentionPolicyTime()).orElse("0");
         this.influxDbProperties = influxDbProperties;
     }
 
@@ -53,13 +55,12 @@ public abstract class InfluxDbClient implements InfluxTemplate {
     }
 
     /**
-     * 设置数据保存策略:retentionPolicy策略名 /database 数据库名/ DURATION 数据保存时限/REPLICATION副本个数/结尾 DEFAULT
+     * 设置数据保存策略: retentionPolicy策略名 / database 数据库名 / DURATION 数据保存时限 / REPLICATION副本个数 / 结尾 DEFAULT
      * DEFAULT表示设为默认的策略
      */
     @Override
     public void createRetentionPolicy() {
-        String command = String.format("CREATE RETENTION POLICY \"%s\" ON \"%s\" DURATION %s REPLICATION %s DEFAULT", retentionPolicy, database, retentionPolicyTime, 1);
-        this.query(command);
+        createRetentionPolicy(retentionPolicy, retentionPolicyTime, 1, true);
     }
 
     /**
@@ -68,15 +69,13 @@ public abstract class InfluxDbClient implements InfluxTemplate {
      * @param policyName  保留策略
      * @param duration    保留时限
      * @param replication 副本个数
-     * @param isDefault   是否为结尾
+     * @param isDefault   是否为默认策略
      */
     @Override
     public void createRetentionPolicy(String policyName, String duration, int replication, boolean isDefault) {
-        String command = String.format("CREATE RETENTION POLICY \"%s\" ON \"%s\" DURATION %s REPLICATION %s ", policyName, database, duration, replication);
-        if (isDefault) {
-            command = command + " DEFAULT";
-        }
-        this.query(command);
+        String command = String.format("CREATE RETENTION POLICY \"%s\" ON \"%s\" DURATION %s REPLICATION %d %s",
+                policyName, database, duration, replication, isDefault ? "DEFAULT" : "");
+        executeQuery(command);
     }
 
     /**
@@ -86,26 +85,34 @@ public abstract class InfluxDbClient implements InfluxTemplate {
      */
     @Override
     public void createDatabase(String database) {
-        influxdb.query(new Query("CREATE DATABASE " + database));
+        executeQuery("CREATE DATABASE " + database);
     }
 
     /**
      * 操作数据库
      *
      * @param command 操作
-     * @return @{@link QueryResult}
+     * @return 查询结果
      */
     @Override
     public QueryResult query(String command) {
         reConnect();
-        QueryResult queryResult;
+        return executeQuery(command);
+    }
+
+    /**
+     * 执行查询操作并返回结果
+     *
+     * @param command 查询命令
+     * @return 查询结果
+     */
+    private QueryResult executeQuery(String command) {
         try {
-            queryResult = influxdb.query(new Query(command, database));
+            return influxdb.query(new Query(command, database));
         } catch (Exception e) {
-            log.error("influxdb操作失败:{}", e.getLocalizedMessage());
-            throw new InfluxdbException("influxdb操作失败:" + e.getLocalizedMessage());
+            log.error("allbs-influx warning！ InfluxDB operation execution failed due to: {}", e.getLocalizedMessage());
+            throw new InfluxdbException("InfluxDB operation execution failed due to: " + e.getLocalizedMessage());
         }
-        return queryResult;
     }
 
     /**
@@ -116,7 +123,7 @@ public abstract class InfluxDbClient implements InfluxTemplate {
      */
     @Override
     public List<Map<String, Object>> queryMapList(String command) {
-        return this.queryMapList(command, "yyyy-MM-dd HH:mm:ss");
+        return queryMapList(command, "yyyy-MM-dd HH:mm:ss");
     }
 
     /**
@@ -128,54 +135,54 @@ public abstract class InfluxDbClient implements InfluxTemplate {
      */
     @Override
     public List<Map<String, Object>> queryMapList(String command, String dateTimeFormatter) {
-        List<Map<String, Object>> resList = new LinkedList<>();
-        QueryResult queryResult = this.query(command);
+        List<Map<String, Object>> resultList = new LinkedList<>();
+        QueryResult queryResult = executeQuery(command);
         QueryResult.Result result = queryResult.getResults().get(0);
-        if (Optional.of(result).map(QueryResult.Result::getSeries).isPresent()) {
+        if (result != null && result.getSeries() != null) {
             QueryResult.Series series = result.getSeries().get(0);
-            if (Optional.of(series).map(QueryResult.Series::getColumns).isPresent() && Optional.of(series).map(QueryResult.Series::getValues).isPresent()) {
+            if (series.getColumns() != null && series.getValues() != null) {
                 List<String> columns = series.getColumns();
-                series.getValues().forEach(v -> {
+                series.getValues().forEach(values -> {
                     Map<String, Object> dataMap = new HashMap<>();
                     for (int i = 0; i < columns.size(); i++) {
                         String key = columns.get(i);
-                        Object value = v.get(i);
+                        Object value = values.get(i);
                         if ("time".equals(key)) {
-                            value = LocalDateTime.parse(value.toString(), DateTimeFormatter.ISO_DATE_TIME).format(DateTimeFormatter.ofPattern(dateTimeFormatter));
+                            value = LocalDateTime.parse(value.toString(), DateTimeFormatter.ISO_DATE_TIME)
+                                    .format(DateTimeFormatter.ofPattern(dateTimeFormatter));
                         }
                         dataMap.put(key, value);
                     }
-                    resList.add(dataMap);
+                    resultList.add(dataMap);
                 });
             }
         }
-        return resList;
+        return resultList;
     }
 
     /**
-     * 读取相关数据并转为list
+     * 读取相关数据并转为指定类型的list
      *
-     * @param command sql语句
-     * @return Map list
+     * @param command    sql语句
+     * @param targetType 目标类型
+     * @param <T>        类型
+     * @return 指定类型的list
      */
     @Override
     public <T> List<T> queryBeanList(String command, Class<T> targetType) {
-        List<T> resList = new LinkedList<>();
-        QueryResult queryResult = this.query(command);
+        List<T> resultList = new LinkedList<>();
+        QueryResult queryResult = executeQuery(command);
         QueryResult.Result result = queryResult.getResults().get(0);
-        if (Optional.of(result).map(QueryResult.Result::getSeries).isPresent()) {
+        if (result != null && result.getSeries() != null) {
             QueryResult.Series series = result.getSeries().get(0);
-            if (Optional.of(series).map(QueryResult.Series::getColumns).isPresent() && Optional.of(series).map(QueryResult.Series::getValues).isPresent()) {
+            if (series.getColumns() != null && series.getValues() != null) {
                 List<String> columns = series.getColumns();
-                resList = series.getValues().stream().map((v) -> {
+                resultList = series.getValues().stream().map(values -> {
                     Map<String, Object> dataMap = new HashMap<>();
                     for (int i = 0; i < columns.size(); i++) {
-                        String key = columns.get(i);
-                        Object value = v.get(i);
-                        dataMap.put(key, value);
+                        dataMap.put(columns.get(i), values.get(i));
                     }
                     try {
-
                         return mapper.readValue(mapper.writeValueAsString(dataMap), targetType);
                     } catch (JsonProcessingException e) {
                         throw new RuntimeException(e);
@@ -183,7 +190,7 @@ public abstract class InfluxDbClient implements InfluxTemplate {
                 }).collect(Collectors.toList());
             }
         }
-        return resList;
+        return resultList;
     }
 
     /**
@@ -212,14 +219,14 @@ public abstract class InfluxDbClient implements InfluxTemplate {
     }
 
     /**
-     * 方法功能: 单条插入并指定时间戳
+     * 单条插入并指定时间戳
      *
      * @param measurement 表名
      * @param tags        tag set
      * @param fields      field set
      * @param time        时间戳
      * @param timeUnit    时间戳的单位
-     * @since 2021/3/5 9:32
+     * @param zoneOffset  时区
      */
     @Override
     public void insert(String measurement, Map<String, String> tags, Map<String, Object> fields, long time, TimeUnit timeUnit, ZoneOffset zoneOffset) {
@@ -229,65 +236,169 @@ public abstract class InfluxDbClient implements InfluxTemplate {
             timeUnit = TimeUnit.MILLISECONDS;
         }
         Point point = Point.measurement(measurement).time(time, timeUnit).tag(tags).fields(fields).build();
-        log.info(("influxDB insert data:" + point));
         try {
             influxdb.write(database, retentionPolicy, point);
+            log.info("allbs-influx notice: InfluxDB data [{}] insertion successful.", point);
         } catch (Exception e) {
-            log.error("数据插入失败:{}", e.getLocalizedMessage());
-            throw new InfluxdbException("数据插入失败:" + e.getLocalizedMessage());
+            log.error("allbs-influx warning! InfluxDB operation execution failed due to: {}", e.getLocalizedMessage());
+            throw new InfluxdbException("InfluxDB operation execution failed due to: " + e.getLocalizedMessage());
         }
     }
 
     /**
-     * tag 一定情况下的批量插入
+     * 单条插入并指定时间
      *
      * @param measurement 表名
-     * @param tags        tag
-     * @param fieldLists  field
+     * @param tags        tag set
+     * @param fields      field set
+     * @param time        指定时间
+     */
+    @Override
+    public void insert(String measurement, Map<String, String> tags, Map<String, Object> fields, LocalDateTime time) {
+        insert(measurement, tags, fields, time, ZoneOffset.UTC);
+    }
+
+    /**
+     * 单条插入并指定时间
+     *
+     * @param measurement 表名
+     * @param tags        tag set
+     * @param fields      field set
+     * @param time        指定时间
+     * @param zoneOffset  时区
+     */
+    @Override
+    public void insert(String measurement, Map<String, String> tags, Map<String, Object> fields, LocalDateTime time, ZoneOffset zoneOffset) {
+        insert(measurement, tags, fields, time.toInstant(zoneOffset).toEpochMilli(), TimeUnit.MILLISECONDS, zoneOffset);
+    }
+
+    /**
+     * 批量插入数据，默认时区为UTC
+     *
+     * @param measurement 表名
+     * @param tags        tag set
+     * @param fieldLists  field list
+     */
+    @Override
+    public void batchInsert(String measurement, Map<String, String> tags, List<Map<String, Object>> fieldLists) {
+        batchInsert(measurement, tags, fieldLists, ZoneOffset.UTC);
+    }
+
+    /**
+     * 批量插入数据，指定时区
+     *
+     * @param measurement 表名
+     * @param tags        tag set
+     * @param fieldLists  field list
+     * @param zoneOffset  时区
      */
     @Override
     public void batchInsert(String measurement, Map<String, String> tags, List<Map<String, Object>> fieldLists, ZoneOffset zoneOffset) {
         reConnect();
-        BatchPoints batchPoints = BatchPoints.database(database).retentionPolicy(retentionPolicy).consistency(InfluxDB.ConsistencyLevel.ALL).build();
+        BatchPoints batchPoints = BatchPoints.database(database)
+                .retentionPolicy(retentionPolicy)
+                .consistency(InfluxDB.ConsistencyLevel.ALL)
+                .build();
+
         for (int i = 0; i < fieldLists.size(); i++) {
-            Point point = Point.measurement(measurement).time(LocalDateTime.now().toInstant(zoneOffset).toEpochMilli() * 1000 + i, TimeUnit.MICROSECONDS).tag(tags).fields(fieldLists.get(i)).build();
+            Point point = Point.measurement(measurement)
+                    .time(LocalDateTime.now().toInstant(zoneOffset).toEpochMilli() * 1000 + i, TimeUnit.MICROSECONDS)
+                    .tag(tags)
+                    .fields(fieldLists.get(i))
+                    .build();
             batchPoints.point(point);
         }
-        log.info(("influxDB insert batch data:" + batchPoints));
+
         try {
             influxdb.write(batchPoints);
+            log.info("allbs-influx notice: InfluxDB batch data [{}] insertion successful.", batchPoints);
         } catch (Exception e) {
-            log.error("数据批量插入失败:{}", e.getLocalizedMessage());
-            throw new InfluxdbException("数据批量插入失败:" + e.getLocalizedMessage());
+            log.error("allbs-influx warning! InfluxDB operation execution failed due to: {}", e.getLocalizedMessage());
+            throw new InfluxdbException("InfluxDB operation execution failed due to: " + e.getLocalizedMessage());
         }
     }
 
     /**
-     * tag 一定情况下的批量插入
+     * 批量插入数据，指定时间
      *
      * @param measurement 表名
-     * @param tags        tag
-     * @param fieldLists  field
+     * @param tags        tag set
+     * @param fieldLists  field list
+     * @param time        指定时间
      */
-    @Override
-    public void batchInsert(String measurement, Map<String, String> tags, List<Map<String, Object>> fieldLists) {
-        this.batchInsert(measurement, tags, fieldLists, ZoneOffset.UTC);
+    public void batchInsert(String measurement, Map<String, String> tags, List<Map<String, Object>> fieldLists, LocalDateTime time) {
+        reConnect();
+        BatchPoints batchPoints = BatchPoints.database(database)
+                .retentionPolicy(retentionPolicy)
+                .consistency(InfluxDB.ConsistencyLevel.ALL)
+                .build();
+
+        for (int i = 0; i < fieldLists.size(); i++) {
+            Point point = Point.measurement(measurement)
+                    .time(time.toInstant(ZoneOffset.UTC).toEpochMilli() * 1000 + i, TimeUnit.MICROSECONDS)
+                    .tag(tags)
+                    .fields(fieldLists.get(i))
+                    .build();
+            batchPoints.point(point);
+        }
+
+        try {
+            influxdb.write(batchPoints);
+            log.info("allbs-influx notice: InfluxDB batch data [{}] insertion successful", batchPoints);
+        } catch (Exception e) {
+            log.error("allbs-influx warning! InfluxDB operation execution failed due to: {}", e.getLocalizedMessage());
+            throw new InfluxdbException("InfluxDB operation execution failed due to: " + e.getLocalizedMessage());
+        }
     }
 
     /**
-     * 方法功能: 多库多表多条数据插入
+     * 批量插入数据，指定时间和时区
+     *
+     * @param measurement 表名
+     * @param tags        tag set
+     * @param fieldLists  field list
+     * @param time        指定时间
+     * @param zoneOffset  时区
+     */
+    public void batchInsert(String measurement, Map<String, String> tags, List<Map<String, Object>> fieldLists, LocalDateTime time, ZoneOffset zoneOffset) {
+        reConnect();
+        BatchPoints batchPoints = BatchPoints.database(database)
+                .retentionPolicy(retentionPolicy)
+                .consistency(InfluxDB.ConsistencyLevel.ALL)
+                .build();
+
+        for (int i = 0; i < fieldLists.size(); i++) {
+            Point point = Point.measurement(measurement)
+                    .time(time.toInstant(zoneOffset).toEpochMilli() * 1000 + i, TimeUnit.MICROSECONDS)
+                    .tag(tags)
+                    .fields(fieldLists.get(i))
+                    .build();
+            batchPoints.point(point);
+        }
+
+        try {
+            influxdb.write(batchPoints);
+            log.info("allbs-influx notice: InfluxDB batch data [{}] insertion successful.", batchPoints);
+        } catch (Exception e) {
+            log.error("allbs-influx warning! InfluxDB operation execution failed due to: {}", e.getLocalizedMessage());
+            throw new InfluxdbException("InfluxDB operation execution failed due to: " + e.getLocalizedMessage());
+        }
+    }
+
+    /**
+     * 多库多表多条数据插入
      *
      * @param batchPoints 多条插入数据
-     * @since 2021/3/5 9:35
      */
     @Override
     public void batchInsert(BatchPoints batchPoints) {
         reConnect();
         try {
             influxdb.write(batchPoints);
+            log.info("allbs-influx notice: InfluxDB batch data [{}] insertion successful.", batchPoints);
         } catch (Exception e) {
-            log.error("数据批量插入失败:{}", e.getLocalizedMessage());
-            throw new InfluxdbException("数据批量插入失败:" + e.getLocalizedMessage());
+            log.error("allbs-influx warning! InfluxDB operation execution failed due to: {}", e.getLocalizedMessage());
+            throw new InfluxdbException("InfluxDB operation execution failed due to: " + e.getLocalizedMessage());
         }
     }
 
@@ -302,7 +413,7 @@ public abstract class InfluxDbClient implements InfluxTemplate {
     }
 
     /**
-     * 如果调用了enableBatch,操作结束时必须调用disableBatch或者手动flush
+     * 启用批量操作，操作结束时必须调用disableBatch或者手动flush
      */
     @Override
     public void enableBatch() {
@@ -311,6 +422,9 @@ public abstract class InfluxDbClient implements InfluxTemplate {
         }
     }
 
+    /**
+     * 禁用批量操作
+     */
     @Override
     public void disableBatch() {
         if (influxdb != null) {
@@ -321,21 +435,17 @@ public abstract class InfluxDbClient implements InfluxTemplate {
     /**
      * 测试是否已正常连接
      *
-     * @return boolean
+     * @return 是否已连接
      */
     @Override
     public boolean ping() {
-        boolean isConnected = false;
-        Pong pong;
         try {
-            pong = influxdb.ping();
-            if (pong != null) {
-                isConnected = true;
-            }
+            Pong pong = influxdb.ping();
+            return pong != null;
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("allbs-influx warning! InfluxDB ping failed due to: {}", e.getLocalizedMessage());
+            return false;
         }
-        return isConnected;
     }
 
     /**

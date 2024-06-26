@@ -4,6 +4,7 @@ import org.influxdb.InfluxDB;
 import org.influxdb.dto.BatchPoints;
 import org.influxdb.dto.QueryResult;
 
+import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
@@ -108,6 +109,29 @@ public interface InfluxTemplate {
     void insert(String measurement, Map<String, String> tags, Map<String, Object> fields, long time, TimeUnit timeUnit, ZoneOffset zoneOffset);
 
     /**
+     * 方法功能: 单条插入并指定时间
+     *
+     * @param measurement 表名
+     * @param tags        tag set
+     * @param fields      field set
+     * @param time        指定时间
+     * @since 2021/3/5 9:32
+     */
+    void insert(String measurement, Map<String, String> tags, Map<String, Object> fields, LocalDateTime time);
+
+    /**
+     * 方法功能: 单条插入并指定时间
+     *
+     * @param measurement 表名
+     * @param tags        tag set
+     * @param fields      field set
+     * @param time        指定时间
+     * @param zoneOffset  指定时区
+     * @since 2021/3/5 9:32
+     */
+    void insert(String measurement, Map<String, String> tags, Map<String, Object> fields, LocalDateTime time, ZoneOffset zoneOffset);
+
+    /**
      * tag 一定情况下的批量插入
      *
      * @param measurement 表名
@@ -124,6 +148,27 @@ public interface InfluxTemplate {
      * @param fieldLists  field
      */
     void batchInsert(String measurement, Map<String, String> tags, List<Map<String, Object>> fieldLists);
+
+    /**
+     * tag 一定情况下的批量插入
+     *
+     * @param measurement 表名
+     * @param tags        tag
+     * @param fieldLists  field
+     * @param time        指定时间
+     */
+    void batchInsert(String measurement, Map<String, String> tags, List<Map<String, Object>> fieldLists, LocalDateTime time);
+
+    /**
+     * tag 一定情况下的批量插入
+     *
+     * @param measurement 表名
+     * @param tags        tag
+     * @param fieldLists  field
+     * @param time        指定时间
+     * @param zoneOffset  指定时区
+     */
+    void batchInsert(String measurement, Map<String, String> tags, List<Map<String, Object>> fieldLists, LocalDateTime time, ZoneOffset zoneOffset);
 
     /**
      * 方法功能: 多库多表多条数据插入
