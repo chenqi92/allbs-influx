@@ -30,9 +30,9 @@ public class DefaultInfluxTemplate extends InfluxDbClient {
                 influxdb = InfluxDBFactory.connect(influxDbProperties.getOpenUrl(), influxDbProperties.getUsername(), influxDbProperties.getPassword());
                 createDatabase(this.database);
                 influxdb.setDatabase(this.database);
-                log.debug("init influxDb, current configuration is " + influxDbProperties);
+                log.debug("init influxDb, current configuration is {}", influxDbProperties);
             } catch (Exception e) {
-                log.error("create database error " + e.getMessage());
+                log.error("create database error {}", e.getMessage());
                 if (!this.influxDbProperties.isSkipError()) {
                     throw new InfluxdbException("influxdb连接失败,请检查influxdb的服务地址及账号密码!");
                 }
